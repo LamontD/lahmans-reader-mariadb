@@ -32,3 +32,5 @@ I'm making this software available under the same license. You can find those li
 2. A running Kafka broker at reasonable default ports
    - I'm running the Bitnami Kafka and Zookeeper Docker containers. The configuration is shown on Docker Hub at https://hub.docker.com/r/bitnami/kafka
    
+# Getting Things Running
+After building and running the Spring Boot app (`mvn clean spring-boot:run`), simply navigate to the built-in Swagger page at http://localhost:8080/lahmans-reader-mariadb/swagger-ui.html for details
