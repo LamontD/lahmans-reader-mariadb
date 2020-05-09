@@ -20,7 +20,7 @@ pretty easy to get started.
 
 The database is an awesome resource, and it contains downloadable versions that are ready to load in your database of choice. 
 Please note that it is licensed under a Creative Commons Attribution-ShareAlike Unported 3.0 license (CC BY-SA 3.0), and 
-I'm making this software available under the same license.
+I'm making this software available under the same license. You can find those license details here: https://creativecommons.org/licenses/by-sa/3.0/
 
 # Requirements:
 1. A MariaDB database instance loaded with the Lahman Baseball Database. 
