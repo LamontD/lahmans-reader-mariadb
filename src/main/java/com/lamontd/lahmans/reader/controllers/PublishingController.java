@@ -30,12 +30,14 @@ import com.lamontd.lahmans.reader.repositories.TeamRepository;
 import com.lamontd.lahmans.reader.services.KafkaSender;
 import com.lamontd.utils.jackson.JacksonMapper;
 import com.lamontd.utils.model.MappedTransportObject;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.concurrent.atomic.LongAdder;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StopWatch;
+import org.springframework.util.StopWatch.TaskInfo;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,8 +49,10 @@ import org.springframework.web.bind.annotation.ResponseBody;
  * @author lamontdozierjr
  */
 @Controller
-@RequestMapping(path = "/transport")
-public class TransportController {
+@RequestMapping(path = "/publish")
+@Tag(name = "Publishing Controller",
+        description = "Queries data and publishes it to the underlying kafka topic.")
+public class PublishingController {
 
     @Autowired
     private PersonRepository personRepository;
@@ -72,9 +76,9 @@ public class TransportController {
     @Autowired
     private KafkaSender kafkaSender;
 
-    private static final Log logger = LogFactory.getLog(TransportController.class);
+    private static final Log logger = LogFactory.getLog(PublishingController.class);
 
-    private boolean writeTransportObject(Object response) {
+    private boolean writeTransportObjectToKafka(Object response) {
         final ObjectMapper outputMapper = JacksonMapper.getStandardMapper();
         MappedTransportObject transportObject = new MappedTransportObject(response);
         try {
@@ -89,7 +93,7 @@ public class TransportController {
 
     @GetMapping(path = "/person/{person-id}")
     public @ResponseBody
-    UserResponse transportPersonInfo(@PathVariable("person-id") String personId,
+    TransportStats transportPersonInfo(@PathVariable("person-id") String personId,
             @RequestParam(value = "appearances", defaultValue = "false") boolean includeAppearances,
             @RequestParam(value = "colleges", defaultValue = "false") boolean includeColleges,
             @RequestParam(value = "awards", defaultValue = "false") boolean includeAwards) {
@@ -98,66 +102,55 @@ public class TransportController {
         stopWatch.start("Player");
         logger.info("Doing transport lookup for PlayerID >" + personId + "<");
         Person player = personRepository.findByPlayerID(personId);
-        UserResponse userResponse = new UserResponse();
         if (player == null) {
-            userResponse.setSuccessful(false);
-            userResponse.setComment("Person " + personId + " was not found");
             stopWatch.stop();
-            userResponse.setStopWatch(stopWatch);
-            userResponse.setResponsesSent(responsesSent.intValue());
-            return userResponse;
+            return new TransportStats("Person " + personId + " was not found");
         }
 
-        writeTransportObject(player);
+        writeTransportObjectToKafka(player);
         responsesSent.increment();
-        stopWatch.stop();
         if (includeColleges) {
-            stopWatch.start("Colleges");
             collegeStintRepository.findByPlayerID(personId).forEach(stint -> {
-                if (writeTransportObject(stint)) {
+                if (writeTransportObjectToKafka(stint)) {
                     responsesSent.increment();
                 }
             });
-            stopWatch.stop();
         }
         if (includeAppearances) {
-            stopWatch.start("Appearances");
             playerAppearanceRepository.findByPlayerID(personId).forEach(appearance -> {
-                if (writeTransportObject(appearance)) {
+                if (writeTransportObjectToKafka(appearance)) {
                     responsesSent.increment();
                 }
             });
-            stopWatch.stop();
         }
         if (includeAwards) {
-            stopWatch.start("Awards");
             playerAwardRepository.findByPlayerID(personId).forEach(award -> {
-                if (writeTransportObject(award)) {
+                if (writeTransportObjectToKafka(award)) {
                     responsesSent.increment();
                 }
             });
             managerAwardRepository.findByPlayerID(personId).forEach(award -> {
-                if (writeTransportObject(award)) {
+                if (writeTransportObjectToKafka(award)) {
                     responsesSent.increment();
                 }
             });
-            stopWatch.stop();
         }
-        return new UserResponse(responsesSent.intValue(), stopWatch);
+        stopWatch.stop();
+        return new TransportStats(responsesSent.intValue(), stopWatch);
     }
 
     @GetMapping(path = "/leagues")
     public @ResponseBody
-    UserResponse transportLeagueInfo(@RequestParam(name = "divisions", defaultValue = "false") boolean includeDivisions) {
+    TransportStats transportLeagueInfo(@RequestParam(name = "divisions", defaultValue = "false") boolean includeDivisions) {
         final LongAdder responsesSent = new LongAdder();
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("Leagues");
         leagueRepository.findAll().forEach((league -> {
-            if (writeTransportObject(league)) {
+            if (writeTransportObjectToKafka(league)) {
                 responsesSent.increment();
                 if (includeDivisions) {
                     divisionRepository.findByLeagueID(league.getId()).forEach((division -> {
-                        if (writeTransportObject(division)) {
+                        if (writeTransportObjectToKafka(division)) {
                             responsesSent.increment();
                         }
                     }));
@@ -165,12 +158,12 @@ public class TransportController {
             }
         }));
         stopWatch.stop();
-        return new UserResponse(responsesSent.intValue(), stopWatch);
+        return new TransportStats(responsesSent.intValue(), stopWatch);
     }
 
     @GetMapping(path = "/team/id/{teamId}")
     public @ResponseBody
-    UserResponse transportTeamInfo(@PathVariable(value = "teamId") Integer teamId) {
+    TransportStats transportTeamInfo(@PathVariable(value = "teamId") Integer teamId) {
         final LongAdder responsesSent = new LongAdder();
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("Team");
@@ -178,42 +171,96 @@ public class TransportController {
         if (daTeam == null) {
             logger.warn("Could not find object with team " + teamId);
         }
-        if (writeTransportObject(daTeam)) {
+        if (writeTransportObjectToKafka(daTeam)) {
             responsesSent.increment();
         }
         stopWatch.stop();
-        return new UserResponse(responsesSent.intValue(), stopWatch);
+        return new TransportStats(responsesSent.intValue(), stopWatch);
     }
 
     @GetMapping(path = "/team")
     public @ResponseBody
-    UserResponse transportTeamsForRange(@RequestParam(name = "startYear") Short startYear,
+    TransportStats transportTeamsForRange(@RequestParam(name = "startYear") Short startYear,
             @RequestParam(name = "endYear") Short endYear) {
         final LongAdder responsesSent = new LongAdder();
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("TeamsByRange");
         teamRepository.findByYearIDBetween(startYear, endYear).forEach(team -> {
-            if (writeTransportObject(team)) {
+            if (writeTransportObjectToKafka(team)) {
                 responsesSent.increment();
             }
         });
         stopWatch.stop();
-        return new UserResponse(responsesSent.intValue(), stopWatch);
+        return new TransportStats(responsesSent.intValue(), stopWatch);
     }
 
     @GetMapping(path = "/franchises")
     public @ResponseBody
-    UserResponse transportAllFranchises() {
+    TransportStats transportAllFranchises() {
         final LongAdder responsesSent = new LongAdder();
         StopWatch stopWatch = new StopWatch();
         stopWatch.start("Franchises");
         franchiseRepository.findAll().forEach(franchise -> {
-            if (writeTransportObject(franchise)) {
+            if (writeTransportObjectToKafka(franchise)) {
                 responsesSent.increment();
             }
         });
         stopWatch.stop();
-        return new UserResponse(responsesSent.intValue(), stopWatch);
+        return new TransportStats(responsesSent.intValue(), stopWatch);
+    }
+
+    public static final class TransportStats {
+
+        private boolean success;
+        private String comment;
+        private int responsesSent;
+        private long processingTimeMillis;
+
+        public TransportStats(int responsesSent, StopWatch stopWatch) {
+            this.responsesSent = responsesSent;
+            this.success = true;
+            for (TaskInfo taskInfo : stopWatch.getTaskInfo()) {
+                this.processingTimeMillis += taskInfo.getTimeMillis();
+            }
+        }
+
+        public TransportStats(String comment) {
+            this.comment = comment;
+            this.success = false;
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
+        public String getComment() {
+            return comment;
+        }
+
+        public void setComment(String comment) {
+            this.comment = comment;
+        }
+
+        public int getResponsesSent() {
+            return responsesSent;
+        }
+
+        public void setResponsesSent(int responsesSent) {
+            this.responsesSent = responsesSent;
+        }
+
+        public long getProcessingTimeMillis() {
+            return processingTimeMillis;
+        }
+
+        public void setProcessingTimeMillis(long processingTimeMillis) {
+            this.processingTimeMillis = processingTimeMillis;
+        }
+
     }
 
 }
