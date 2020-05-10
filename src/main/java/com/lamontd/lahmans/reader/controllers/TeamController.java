@@ -16,6 +16,7 @@ package com.lamontd.lahmans.reader.controllers;
 
 import com.lamontd.lahmans.reader.model.Team;
 import com.lamontd.lahmans.reader.repositories.TeamRepository;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
  */
 @Controller
 @RequestMapping(path = "/team")
+@Tag(name="Team Info",
+        description="Provides access to team info, where a 'team' represents "
+                + "a set of record and stats info for an individual franchise and year.")
 public class TeamController {
 
     @Autowired

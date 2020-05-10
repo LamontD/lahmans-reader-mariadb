@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import com.lamontd.lahmans.reader.repositories.PersonRepository;
 import com.lamontd.lahmans.reader.repositories.PlayerAppearanceRepository;
 import com.lamontd.lahmans.reader.repositories.PlayerAwardRepository;
-import org.springframework.web.bind.annotation.RequestBody;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  *
@@ -38,6 +38,8 @@ import org.springframework.web.bind.annotation.RequestBody;
  */
 @Controller
 @RequestMapping(path = "/person")
+@Tag(name = "Person Info",
+        description = "Provides access to individual Person (Player or Manager) biographical information")
 public class PersonController {
 
     @Autowired

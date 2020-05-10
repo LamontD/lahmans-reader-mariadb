@@ -21,6 +21,7 @@ import com.lamontd.lahmans.reader.model.YearlyStandings;
 import com.lamontd.lahmans.reader.repositories.ManagerAwardRepository;
 import com.lamontd.lahmans.reader.repositories.PlayerAwardRepository;
 import com.lamontd.lahmans.reader.repositories.TeamRepository;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
  */
 @Controller
 @RequestMapping(path = "/standings")
+@Tag(name = "Yearly Standings",
+        description = "Description of the standings for a year. Can filter by several options.")
 public class YearlyStandingsController {
 
     @Autowired
@@ -57,7 +60,8 @@ public class YearlyStandingsController {
         standings.setDivision(division);
         Iterable<Team> teams = (league == null && division == null)
                 ? teamRepository.findByYearID(year)
-                : division == null ? teamRepository.findByYearIDAndLeague(year, league) : teamRepository.findByYearIDAndLeagueAndDivision(year, league, division);
+                : division == null ? teamRepository.findByYearIDAndLeague(year, league)
+                        : teamRepository.findByYearIDAndLeagueAndDivision(year, league, division);
         teams.forEach((team) -> standings.addTeam(team));
         return standings;
     }

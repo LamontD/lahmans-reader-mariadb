@@ -34,6 +34,7 @@ public final class TeamRecord {
     private Short games;
     private Short wins;
     private Short losses;
+    private Short teamRank;
     private List<String> honors;
 
     public TeamRecord() {
@@ -48,6 +49,7 @@ public final class TeamRecord {
         this.games = team.getGamesPlayed();
         this.wins = team.getWins();
         this.losses = team.getLosses();
+        this.teamRank = team.getTeamRank();
         this.honors = new ArrayList<>();
         if (team.getDivisionWinner() != null && team.getDivisionWinner()) {
             this.honors.add(DIVISION_CHAMP);
@@ -135,4 +137,13 @@ public final class TeamRecord {
         this.division = division;
     }
 
+    public Short getTeamRank() {
+        return teamRank;
+    }
+
+    public void setTeamRank(Short teamRank) {
+        this.teamRank = teamRank;
+    }
+
+    
 }
