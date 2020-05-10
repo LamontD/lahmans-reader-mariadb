@@ -28,6 +28,7 @@ public interface PlayerAppearanceRepository extends CrudRepository<PlayerAppeara
     Iterable<PlayerAppearance> findByTeamIDAndYearID(String teamID, Short year);
     Iterable<PlayerAppearance> findByPlayerIDAndTeamID(String playerID, String teamID);
     Iterable<PlayerAppearance> findByTeamIDAndYearIDBetween(String teamID, Short startYear, Short endYear);
+    Iterable<PlayerAppearance> findByYearID(Short year);
     long countByPlayerID(String playerID);
     long countByPlayerIDAndTeamID(String playerID, String teamID);
     

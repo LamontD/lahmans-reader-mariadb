@@ -15,6 +15,7 @@
 package com.lamontd.lahmans.reader.repositories;
 
 import com.lamontd.lahmans.reader.model.Team;
+import java.util.Collection;
 import org.springframework.data.repository.CrudRepository;
 
 /**
@@ -48,4 +49,6 @@ public interface TeamRepository extends CrudRepository<Team, Integer> {
     Iterable<Team> findByFranchiseAndYearIDBetween(String franchise, Short startYear, Short endYear);
 
     Iterable<Team> findByYearIDBetween(Short startYear, Short endYear);
+    
+    Iterable<Team> findByIDIn(Collection<Integer> idList);
 }

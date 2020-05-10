@@ -14,8 +14,6 @@
  */
 package com.lamontd.lahmans.reader.controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lamontd.lahmans.reader.model.Person;
 import com.lamontd.lahmans.reader.model.Team;
 import com.lamontd.lahmans.reader.repositories.CollegeStintRepository;
@@ -27,17 +25,19 @@ import com.lamontd.lahmans.reader.repositories.PersonRepository;
 import com.lamontd.lahmans.reader.repositories.PlayerAppearanceRepository;
 import com.lamontd.lahmans.reader.repositories.PlayerAwardRepository;
 import com.lamontd.lahmans.reader.repositories.TeamRepository;
-import com.lamontd.lahmans.reader.services.KafkaSender;
-import com.lamontd.utils.jackson.JacksonMapper;
-import com.lamontd.utils.model.MappedTransportObject;
+import com.lamontd.lahmans.reader.services.MappedTransportObjectKafkaSender;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.concurrent.atomic.LongAdder;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StopWatch;
-import org.springframework.util.StopWatch.TaskInfo;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,7 +50,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
  */
 @Controller
 @RequestMapping(path = "/publish")
-@Tag(name = "Publishing Controller",
+@Tag(name = "Publisher",
         description = "Queries data and publishes it to the underlying kafka topic.")
 public class PublishingController {
 
@@ -72,195 +72,164 @@ public class PublishingController {
     private DivisionRepository divisionRepository;
     @Autowired
     private FranchiseRepository franchiseRepository;
-
     @Autowired
-    private KafkaSender kafkaSender;
+    private MappedTransportObjectKafkaSender kafkaSender;
 
     private static final Log logger = LogFactory.getLog(PublishingController.class);
 
-    private boolean writeTransportObjectToKafka(Object response) {
-        final ObjectMapper outputMapper = JacksonMapper.getStandardMapper();
-        MappedTransportObject transportObject = new MappedTransportObject(response);
-        try {
-            logger.info("TransportObject --> " + outputMapper.writeValueAsString(transportObject));
-        } catch (JsonProcessingException ex) {
-            logger.error("Problem converting to transport object", ex);
-            return false;
-        }
-        kafkaSender.sendMessage(response);
-        return true;
-    }
-
-    @GetMapping(path = "/person/{person-id}")
+    @GetMapping(path = "/franchises")
     public @ResponseBody
-    TransportStats transportPersonInfo(@PathVariable("person-id") String personId,
-            @RequestParam(value = "appearances", defaultValue = "false") boolean includeAppearances,
-            @RequestParam(value = "colleges", defaultValue = "false") boolean includeColleges,
-            @RequestParam(value = "awards", defaultValue = "false") boolean includeAwards) {
-        final LongAdder responsesSent = new LongAdder();
+    TransportStats transportAllFranchises() {
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
         StopWatch stopWatch = new StopWatch();
-        stopWatch.start("Player");
-        logger.info("Doing transport lookup for PlayerID >" + personId + "<");
-        Person player = personRepository.findByPlayerID(personId);
-        if (player == null) {
-            stopWatch.stop();
-            return new TransportStats("Person " + personId + " was not found");
-        }
-
-        writeTransportObjectToKafka(player);
-        responsesSent.increment();
-        if (includeColleges) {
-            collegeStintRepository.findByPlayerID(personId).forEach(stint -> {
-                if (writeTransportObjectToKafka(stint)) {
-                    responsesSent.increment();
-                }
-            });
-        }
-        if (includeAppearances) {
-            playerAppearanceRepository.findByPlayerID(personId).forEach(appearance -> {
-                if (writeTransportObjectToKafka(appearance)) {
-                    responsesSent.increment();
-                }
-            });
-        }
-        if (includeAwards) {
-            playerAwardRepository.findByPlayerID(personId).forEach(award -> {
-                if (writeTransportObjectToKafka(award)) {
-                    responsesSent.increment();
-                }
-            });
-            managerAwardRepository.findByPlayerID(personId).forEach(award -> {
-                if (writeTransportObjectToKafka(award)) {
-                    responsesSent.increment();
-                }
-            });
-        }
-        stopWatch.stop();
-        return new TransportStats(responsesSent.intValue(), stopWatch);
+        stopWatch.start("Franchises");
+        franchiseRepository.findAll().forEach(franchise
+                -> transportStats.addTransaction(kafkaSender.send(franchise)));
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
     }
 
     @GetMapping(path = "/leagues")
     public @ResponseBody
     TransportStats transportLeagueInfo(@RequestParam(name = "divisions", defaultValue = "false") boolean includeDivisions) {
-        final LongAdder responsesSent = new LongAdder();
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start("Leagues");
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
         leagueRepository.findAll().forEach((league -> {
-            if (writeTransportObjectToKafka(league)) {
-                responsesSent.increment();
-                if (includeDivisions) {
-                    divisionRepository.findByLeagueID(league.getId()).forEach((division -> {
-                        if (writeTransportObjectToKafka(division)) {
-                            responsesSent.increment();
-                        }
-                    }));
-                }
+            transportStats.addTransaction(kafkaSender.send(league));
+            if (includeDivisions) {
+                divisionRepository.findByLeagueID(league.getId()).forEach(division
+                        -> transportStats.addTransaction(kafkaSender.send(division)));
             }
         }));
-        stopWatch.stop();
-        return new TransportStats(responsesSent.intValue(), stopWatch);
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
+    }
+
+    @GetMapping(path = "/person/{person-id}")
+    public @ResponseBody
+    TransportStats transportIndividualPersonInfo(@PathVariable("person-id") String personId,
+            @RequestParam(value = "includeAppearances", defaultValue = "false") boolean includeAppearances,
+            @RequestParam(value = "includeColleges", defaultValue = "false") boolean includeColleges,
+            @RequestParam(value = "includeAwards", defaultValue = "false") boolean includeAwards) {
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
+        logger.info("Doing transport lookup for PlayerID >" + personId + "<");
+        Person player = personRepository.findByPlayerID(personId);
+        if (player == null) {
+            transportStats.setComment("Person " + personId + " was not found");
+        } else {
+            transportStats.setTransactions(publishPersonInfo(player, includeColleges, includeAppearances, includeAwards));
+        }
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
+    }
+
+    @GetMapping(path = "/appearances/player/{player-id}")
+    public @ResponseBody
+    TransportStats transportAppearancesByPlayerId(@PathVariable(value = "player-id") String playerId,
+            @RequestParam(value = "includeTeam", defaultValue = "false") boolean includeTeam) {
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
+        playerAppearanceRepository.findByPlayerID(playerId).forEach(appearance -> {
+            transportStats.addTransaction(kafkaSender.send(appearance));
+            if (includeTeam) {
+                Team team = teamRepository.findByID(appearance.getTeamUniqueID());
+                transportStats.addTransaction(kafkaSender.send(team));
+            }
+        });
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
+    }
+
+    @GetMapping(path = "/appearances/team/{team-id}")
+    public @ResponseBody
+    TransportStats transportAppearancesByTeamId(@PathVariable(value = "team-id") Integer teamUniqueId,
+            @RequestParam(name = "includePlayers", defaultValue = "false") boolean includePlayers) {
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
+        playerAppearanceRepository.findByTeamUniqueID(teamUniqueId).forEach(appearance -> {
+            transportStats.addTransaction(kafkaSender.send(appearance));
+            if (includePlayers) {
+                Person player = personRepository.findById(appearance.getPlayerID()).get();
+                transportStats.addTransaction(kafkaSender.send(player));
+            }
+        });
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
+    }
+
+    @GetMapping(path = "/apperances/year/{year-id}")
+    public @ResponseBody
+    TransportStats transportAppearancesByYear(@PathVariable(value = "year-id") Short year,
+            @RequestParam(name = "includeTeams", defaultValue = "false") boolean includeTeams,
+            @RequestParam(name = "includePlayers", defaultValue = "false") boolean includePlayers) {
+        final TransportStats transportStats = new TransportStats();
+        Set<Integer> teamIds = new HashSet<>();
+        Set<String> playerIds = new HashSet<>();
+        Instant start = Instant.now();
+        playerAppearanceRepository.findByYearID(year).forEach(appearance -> {
+            transportStats.addTransaction(kafkaSender.send(appearance));
+            if (includeTeams) {
+                teamIds.add(appearance.getTeamUniqueID());
+            }
+            if (includePlayers) {
+                playerIds.add(appearance.getPlayerID());
+            }
+        });
+        teamRepository.findByIDIn(teamIds).forEach(team
+                -> transportStats.addTransaction(kafkaSender.send(team)));
+        personRepository.findByPlayerIDIn(playerIds).forEach(player
+                -> transportStats.addTransaction(kafkaSender.send(player)));
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
     }
 
     @GetMapping(path = "/team/id/{teamId}")
     public @ResponseBody
     TransportStats transportTeamInfo(@PathVariable(value = "teamId") Integer teamId) {
-        final LongAdder responsesSent = new LongAdder();
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start("Team");
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
         Team daTeam = teamRepository.findByID(teamId);
         if (daTeam == null) {
             logger.warn("Could not find object with team " + teamId);
         }
-        if (writeTransportObjectToKafka(daTeam)) {
-            responsesSent.increment();
-        }
-        stopWatch.stop();
-        return new TransportStats(responsesSent.intValue(), stopWatch);
+        transportStats.addTransaction(kafkaSender.send(daTeam));
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
     }
 
     @GetMapping(path = "/team")
     public @ResponseBody
-    TransportStats transportTeamsForRange(@RequestParam(name = "startYear") Short startYear,
+    TransportStats transportTeamsForYearRange(@RequestParam(name = "startYear") Short startYear,
             @RequestParam(name = "endYear") Short endYear) {
-        final LongAdder responsesSent = new LongAdder();
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start("TeamsByRange");
-        teamRepository.findByYearIDBetween(startYear, endYear).forEach(team -> {
-            if (writeTransportObjectToKafka(team)) {
-                responsesSent.increment();
-            }
-        });
-        stopWatch.stop();
-        return new TransportStats(responsesSent.intValue(), stopWatch);
+        final TransportStats transportStats = new TransportStats();
+        Instant start = Instant.now();
+        teamRepository.findByYearIDBetween(startYear, endYear).forEach(team
+                -> transportStats.addTransaction(kafkaSender.send(team))
+        );
+        transportStats.setProcessingTime(Duration.between(start, Instant.now()));
+        return transportStats;
     }
 
-    @GetMapping(path = "/franchises")
-    public @ResponseBody
-    TransportStats transportAllFranchises() {
-        final LongAdder responsesSent = new LongAdder();
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start("Franchises");
-        franchiseRepository.findAll().forEach(franchise -> {
-            if (writeTransportObjectToKafka(franchise)) {
-                responsesSent.increment();
-            }
-        });
-        stopWatch.stop();
-        return new TransportStats(responsesSent.intValue(), stopWatch);
-    }
-
-    public static final class TransportStats {
-
-        private boolean success;
-        private String comment;
-        private int responsesSent;
-        private long processingTimeMillis;
-
-        public TransportStats(int responsesSent, StopWatch stopWatch) {
-            this.responsesSent = responsesSent;
-            this.success = true;
-            for (TaskInfo taskInfo : stopWatch.getTaskInfo()) {
-                this.processingTimeMillis += taskInfo.getTimeMillis();
-            }
+    private List<String> publishPersonInfo(Person player, boolean includeColleges, boolean includeAppearances, boolean includeAwards) {
+        List<String> transactionIds = new ArrayList<>();
+        transactionIds.add(kafkaSender.send(player));
+        if (includeColleges) {
+            collegeStintRepository.findByPlayerID(player.getPlayerID()).forEach(stint
+                    -> transactionIds.add(kafkaSender.send(stint)));
         }
-
-        public TransportStats(String comment) {
-            this.comment = comment;
-            this.success = false;
+        if (includeAppearances) {
+            playerAppearanceRepository.findByPlayerID(player.getPlayerID()).forEach(appearance
+                    -> transactionIds.add(kafkaSender.send(appearance)));
         }
-
-        public boolean isSuccess() {
-            return success;
+        if (includeAwards) {
+            playerAwardRepository.findByPlayerID(player.getPlayerID()).forEach(award
+                    -> transactionIds.add(kafkaSender.send(award)));
+            managerAwardRepository.findByPlayerID(player.getPlayerID()).forEach(award
+                    -> transactionIds.add(kafkaSender.send(award)));
         }
-
-        public void setSuccess(boolean success) {
-            this.success = success;
-        }
-
-        public String getComment() {
-            return comment;
-        }
-
-        public void setComment(String comment) {
-            this.comment = comment;
-        }
-
-        public int getResponsesSent() {
-            return responsesSent;
-        }
-
-        public void setResponsesSent(int responsesSent) {
-            this.responsesSent = responsesSent;
-        }
-
-        public long getProcessingTimeMillis() {
-            return processingTimeMillis;
-        }
-
-        public void setProcessingTimeMillis(long processingTimeMillis) {
-            this.processingTimeMillis = processingTimeMillis;
-        }
-
+        return transactionIds;
     }
 
 }

@@ -15,6 +15,7 @@
 package com.lamontd.lahmans.reader.repositories;
 
 import com.lamontd.lahmans.reader.model.Person;
+import java.util.Collection;
 import org.springframework.data.repository.CrudRepository;
 
 /**
@@ -27,4 +28,5 @@ public interface PersonRepository extends CrudRepository<Person, String> {
     Iterable<Person> findByBirthYear(int birthYear);
     Iterable<Person> findByDeathDateNotNull();
     Iterable<Person> findByDeathDateNull();
+    Iterable<Person> findByPlayerIDIn(Collection<String> playerIdList);
 }

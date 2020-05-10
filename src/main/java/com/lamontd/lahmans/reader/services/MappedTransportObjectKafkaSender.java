@@ -17,7 +17,7 @@ package com.lamontd.lahmans.reader.services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lamontd.utils.jackson.JacksonMapper;
-import com.lamontd.utils.model.MappedTransportObject;
+import com.lamontd.utils.transport.MappedTransportObject;
 import java.util.UUID;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -31,29 +31,30 @@ import org.springframework.stereotype.Service;
  * @author lamontdozierjr
  */
 @Service
-public class KafkaSender {
+public class MappedTransportObjectKafkaSender {
 
     @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
 
     private String publishTopic;
 
-    private static final Log logger = LogFactory.getLog(KafkaSender.class);
+    private static final Log logger = LogFactory.getLog(MappedTransportObjectKafkaSender.class);
 
-    public KafkaSender(@Value("${lahmans.publish.topic}") String transportTopic) {
+    public MappedTransportObjectKafkaSender(@Value("${lahmans.publish.topic}") String transportTopic) {
         this.publishTopic = transportTopic;
     }
 
-    public MappedTransportObject sendMessage(Object messageObject) {
+    public String send(Object originalObject) {
         try {
             final ObjectMapper outputMapper = JacksonMapper.getStandardMapper();
-            MappedTransportObject transportObject = new MappedTransportObject(messageObject);
+            MappedTransportObject transportObject = new MappedTransportObject(originalObject);
             transportObject.setTransactionId(UUID.randomUUID().toString());
             String messageString = outputMapper.writeValueAsString(transportObject);
             kafkaTemplate.send(publishTopic, messageString);
-            return transportObject;
+            return transportObject.getTransactionId();
         } catch (JsonProcessingException ex) {
             logger.warn("Problem trying to convert output message to topic", ex);
+            // TODO: We should throw some sort of exception here
         }
         return null;
     }
