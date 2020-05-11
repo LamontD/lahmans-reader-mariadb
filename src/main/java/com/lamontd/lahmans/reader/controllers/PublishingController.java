@@ -50,8 +50,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
  */
 @Controller
 @RequestMapping(path = "/publish")
-@Tag(name = "Publisher",
-        description = "Queries data and publishes it to the underlying kafka topic.")
+@Tag(name = "Kafka Publisher",
+        description = "Operations that GET data from the database and publish it to the output Kafka topic.")
 public class PublishingController {
 
     @Autowired
