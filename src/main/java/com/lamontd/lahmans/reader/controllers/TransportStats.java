@@ -28,6 +28,7 @@ public final class TransportStats {
     private String comment;
     private Duration processingTime;
     private List<String> transactions;
+    private int count;
 
     public String getComment() {
         return comment;
@@ -37,12 +38,21 @@ public final class TransportStats {
         this.comment = comment;
     }
 
+    public int getCount() {
+        return count;
+    }
+
+    public void setCount(int count) {
+        this.count = count;
+    }
+
     public List<String> getTransactions() {
         return transactions;
     }
 
     public void setTransactions(List<String> transactions) {
         this.transactions = transactions;
+        this.count = transactions.size();
     }
 
     public void addTransaction(String transactionId) {
@@ -51,6 +61,7 @@ public final class TransportStats {
         }
         if (StringUtils.isNotBlank(transactionId)) {
             this.transactions.add(transactionId);
+            count++;
         }
     }
 
