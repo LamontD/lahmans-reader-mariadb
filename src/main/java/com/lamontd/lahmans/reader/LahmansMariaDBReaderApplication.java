@@ -14,6 +14,7 @@
  */
 package com.lamontd.lahmans.reader;
 
+import com.lamontd.transactionmanager.model.TransactionManagerConsts;
 import io.swagger.v3.oas.models.ExternalDocumentation;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
@@ -24,7 +25,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+    TransactionManagerConsts.SERVICES_BASE_PACKAGE,
+    "com.lamontd.lahmans.reader"
+})
 public class LahmansMariaDBReaderApplication {
 
     public static void main(String[] args) {

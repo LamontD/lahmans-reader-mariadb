@@ -15,6 +15,7 @@
 package com.lamontd.lahmans.reader.repositories;
 
 import com.lamontd.lahmans.reader.model.PlayerAward;
+import java.util.Collection;
 import org.springframework.data.repository.CrudRepository;
 
 /**
@@ -25,5 +26,7 @@ public interface PlayerAwardRepository extends CrudRepository<PlayerAward, Integ
     PlayerAward findByID(Integer id);
     Iterable<PlayerAward> findByYearID(Short year);
     Iterable<PlayerAward> findByPlayerID(String playerID);
+    Iterable<PlayerAward> findByPlayerIDIn(Collection<String> playerIDList);
+    Iterable<PlayerAward> findByYearIDBetween(Short startYear, Short endYear);
     
 }

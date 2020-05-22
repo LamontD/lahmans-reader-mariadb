@@ -64,6 +64,13 @@ public final class TransportStats {
             count++;
         }
     }
+    
+    public void addTransactions(List<String> transactionList) {
+        if (this.transactions == null) {
+            this.transactions = new ArrayList<>();
+        }
+        this.transactions.addAll(transactionList);
+    }
 
     public Duration getProcessingTime() {
         return processingTime;
